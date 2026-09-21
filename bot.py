@@ -1,21 +1,18 @@
 """ATLAS — bot Telegram (version corrigée).
-
 Corrections par rapport à la version initiale :
-- appel OpenAI asynchrone avec timeout (le bot ne se fige plus pendant la réponse) ;
-- historique de conversation borné et sauvegardé sur disque ;
-- réponses longues découpées (limite Telegram de 4096 caractères) ;
-- gestionnaire d'erreurs global + clic répété sur le bouton géré ;
-- erreurs techniques dans les logs, message générique pour l'utilisateur ;
-- variables d'environnement validées au démarrage ;
-- handlers limités aux messages privés.
+appel OpenAI asynchrone avec timeout (le bot ne se fige plus pendant la réponse) ;
+historique de conversation borné et sauvegardé sur disque ;
+réponses longues découpées (limite Telegram de 4096 caractères) ;
+gestionnaire d'erreurs global + clic répété sur le bouton géré ;
+erreurs techniques dans les logs, message générique pour l'utilisateur ;
+variables d'environnement validées au démarrage ;
+handlers limités aux messages privés.
 """
-
 import asyncio
 import json
 import logging
 import os
 from pathlib import Path
-
 from openai import AsyncOpenAI
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
@@ -30,12 +27,10 @@ from telegram.ext import (
 )
 
 # --- Configuration ----------------------------------------------------------
-
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 MEMORY_FILE = Path(os.environ.get("MEMORY_FILE", "conversation_memory.json"))
-
 MAX_TURNS = 20          # nombre de messages conservés en plus du prompt système
 TELEGRAM_LIMIT = 4000   # marge sous la limite réelle de 4096 caractères
 OPENAI_TIMEOUT = 45     # secondes
@@ -71,7 +66,6 @@ SYSTEM_PROMPT = (
 )
 
 # --- Mémoire de conversation ------------------------------------------------
-
 conversation_memory: dict[int, list[dict]] = {}
 _memory_lock = asyncio.Lock()
 
@@ -122,8 +116,6 @@ def trim_history(user_id: int) -> None:
 
 
 # --- Utilitaires ------------------------------------------------------------
-
-
 def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
     """Découpe un texte trop long pour Telegram, de préférence sur un saut de ligne."""
     if not text:
@@ -145,8 +137,6 @@ def is_founder(update: Update) -> bool:
 
 
 # --- Handlers ---------------------------------------------------------------
-
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_founder(update):
         await update.message.reply_text("Accès refusé.")
@@ -174,19 +164,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not is_founder(update) or not update.message or not update.message.text:
         return
     user_id = update.effective_user.id
-
     if openai_client is None:
         await update.message.reply_text("Erreur: clé OpenAI manquante.")
         return
-
     await update.effective_chat.send_action(action=ChatAction.TYPING)
-
     async with _memory_lock:
         history = get_history(user_id)
         history.append({"role": "user", "content": update.message.text})
         trim_history(user_id)
         messages = list(conversation_memory[user_id])
-
     try:
         response = await openai_client.chat.completions.create(
             model=OPENAI_MODEL, messages=messages
@@ -199,14 +185,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.exception("Appel OpenAI en échec")
         await update.message.reply_text("⚠️ Erreur système. Détails dans les logs.")
         return
-
     ai_reply = (response.choices[0].message.content or "").strip()
-
     async with _memory_lock:
         conversation_memory[user_id].append({"role": "assistant", "content": ai_reply})
         trim_history(user_id)
         save_memory()
-
     for chunk in split_message(ai_reply):
         await update.message.reply_text(chunk)
 
@@ -219,10 +202,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.answer("Accès refusé.", show_alert=True)
         return
     await query.answer()
-
     if query.data != "rapport":
         return
-
     messages_count = max(len(conversation_memory.get(query.from_user.id, [])) - 1, 0)
     text = (
         "📊 Rapport\n"
@@ -245,8 +226,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 # --- Démarrage --------------------------------------------------------------
-
-
 def main() -> None:
     missing = [
         name
@@ -261,9 +240,7 @@ def main() -> None:
     if missing:
         print("ERREUR: variables d'environnement manquantes ou invalides: " + ", ".join(missing))
         return
-
     load_memory()
-
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("reset", reset, filters=filters.ChatType.PRIVATE))
@@ -274,7 +251,6 @@ def main() -> None:
         )
     )
     app.add_error_handler(error_handler)
-
     print("✅ Bot démarré...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
